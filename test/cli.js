@@ -95,6 +95,7 @@ describe('cli', function() {
 
   describe('node-sass in.scss', function() {
     it('should compile a scss file', function(done) {
+      var old_cwd = process.cwd();
       process.chdir(fixture('simple'));
 
       var src = fixture('simple/index.scss');
@@ -104,7 +105,7 @@ describe('cli', function() {
       bin.on('close', function() {
         assert(fs.existsSync(dest));
         fs.unlinkSync(dest);
-        process.chdir(__dirname);
+        process.chdir(old_cwd);
         done();
       });
     });
