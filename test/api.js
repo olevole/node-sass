@@ -163,17 +163,6 @@ describe('api', function() {
       done();
     });
 
-    it('should compile sass to css using indented syntax', function(done) {
-      var src = read(fixture('indent/index.sass'), 'utf8');
-      var expected = read(fixture('indent/expected.css'), 'utf8').trim();
-      var css = sass.renderSync({
-        data: src,
-        indentedSyntax: true
-      }).css.trim();
-
-      assert.equal(css, expected.replace(/\r\n/g, '\n'));
-      done();
-    });
 
     it('should throw error for bad input', function(done) {
       assert.throws(function() {
