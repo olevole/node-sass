@@ -163,6 +163,17 @@ describe('api', function() {
       done();
     });
 
+    it('should compile sass to css using indented syntax', function(done) {
+      var src2 = read(fixture('indent/index.sass'), 'utf8');
+      var expected2 = read(fixture('indent/expected.css'), 'utf8').trim();
+      var css2 = sass.renderSync({
+        data: src2,
+        indentedSyntax: true
+      }).css.trim();
+
+      assert.equal(css2, expected2.replace(/\r\n/g, '\n'));
+      done();
+    });
 
     it('should throw error for bad input', function(done) {
       assert.throws(function() {
@@ -173,10 +184,10 @@ describe('api', function() {
     });
 
     it('should override imports with custom importer', function(done) {
-      var src = read(fixture('include-files/index.scss'), 'utf8');
+      var src3 = read(fixture('include-files/index.scss'), 'utf8');
 
-      var result = sass.renderSync({
-        data: src,
+      var result3 = sass.renderSync({
+        data: src3,
         importer: function(url, prev, finish) {
           finish({
             file: '/some/other/path.scss',
@@ -185,7 +196,7 @@ describe('api', function() {
         }
       });
 
-      assert.equal(result.css.trim(), 'div {\n  color: yellow; }\n\ndiv {\n  color: yellow; }');
+      assert.equal(result3.css.trim(), 'div {\n  color: yellow; }\n\ndiv {\n  color: yellow; }');
       done();
     });
   });
