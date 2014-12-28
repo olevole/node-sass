@@ -4,7 +4,7 @@
 
 char* CreateString(Local<Value> value) {
   if (value->IsNull() || !value->IsString()) {
-    return const_cast<char*>(""); // return empty string.
+    return 0;
   }
 
   String::Utf8Value string(value);
@@ -14,6 +14,39 @@ char* CreateString(Local<Value> value) {
 }
 
 std::vector<sass_context_wrapper*> imports_collection;
+
+void prepare_import_results(Local<Value> returned_value, sass_context_wrapper* ctx_w) {
+  if (returned_value->IsArray()) {
+    Handle<Array> array = Handle<Array>::Cast(returned_value);
+
+    ctx_w->imports = sass_make_import_list(array->Length());
+
+    for (size_t i = 0; i < array->Length(); ++i) {
+      Local<Value> value = array->Get(i);
+
+      if (!value->IsObject())
+        continue;
+
+      Local<Object> object = Local<Object>::Cast(value);
+      char* path = CreateString(object->Get(String::New("file")));
+      char* contents = CreateString(object->Get(String::New("contents")));
+
+      ctx_w->imports[i] = sass_make_import_entry(path, (!contents || contents[0] == '\0') ? 0 : strdup(contents), 0);
+    }
+  }
+  else if (returned_value->IsObject()) {
+    ctx_w->imports = sass_make_import_list(1);
+    Local<Object> object = Local<Object>::Cast(returned_value);
+    char* path = CreateString(object->Get(String::New("file")));
+    char* contents = CreateString(object->Get(String::New("contents")));
+
+    ctx_w->imports[0] = sass_make_import_entry(path, (!contents || contents[0] == '\0') ? 0 : strdup(contents), 0);
+  }
+  else {
+    ctx_w->imports = sass_make_import_list(1);
+    ctx_w->imports[0] = sass_make_import_entry(ctx_w->file, 0, 0);
+  }
+}
 
 void dispatched_async_uv_callback(uv_async_t *req) {
   NanScope();
@@ -42,22 +75,26 @@ struct Sass_Import** sass_importer(const char* file, const char* prev, void* coo
 
   ctx_w->file = file ? strdup(file) : 0;
   ctx_w->prev = prev ? strdup(prev) : 0;
-  ctx_w->async.data = (void*)ctx_w;
-  uv_async_send(&ctx_w->async);
 
   if (ctx_w->success_callback) {
     /*  that is async: Render() or RenderFile(),
      *  the default even loop is unblocked so it
      *  can run uv_async_send without a push.
      */
+    ctx_w->async.data = (void*)ctx_w;
+    uv_async_send(&ctx_w->async);
     uv_cond_wait(&ctx_w->importer_condition_variable, &ctx_w->importer_mutex);
   }
   else {
-    /*  that is sync: RenderSync() or RenderFileSync,
-     *  we need to explicitly uv_run as the event loop
-     *  is blocked; waiting down the chain.
-     */
-    uv_run(ctx_w->async.loop, UV_RUN_DEFAULT);
+    Handle<Value> argv[] = {
+      NanNew<String>(strdup(ctx_w->file ? ctx_w->file : 0)),
+      NanNew<String>(strdup(ctx_w->prev ? ctx_w->prev : 0)),
+      NanNew<Number>(imports_collection.size() - 1)
+    };
+
+    Local<Object> returned_value = Local<Object>::Cast(NanNew<Value>(ctx_w->importer_callback->Call(3, argv)));
+
+    prepare_import_results(returned_value->Get(NanNew("objectLiteral")), ctx_w);
   }
 
   return ctx_w->imports;
@@ -69,12 +106,12 @@ void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx
   NanAssignPersistent(ctx_w->result, options->Get(NanNew("result"))->ToObject());
 
   if (isFile) {
-    ctx = sass_file_context_get_context((struct Sass_File_Context*) cptr);
     ctx_w->fctx = (struct Sass_File_Context*) cptr;
+    ctx = sass_file_context_get_context(ctx_w->fctx);
   }
   else {
-    ctx = sass_data_context_get_context((struct Sass_Data_Context*) cptr);
     ctx_w->dctx = (struct Sass_Data_Context*) cptr;
+    ctx = sass_data_context_get_context(ctx_w->dctx);
   }
 
   struct Sass_Options* sass_options = sass_context_get_options(ctx);
@@ -92,9 +129,10 @@ void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx
 
   Local<Function> importer_callback = Local<Function>::Cast(options->Get(NanNew("importer")));
 
-  ctx_w->importer_callback = new NanCallback(importer_callback);
+  ctx_w->importer_callback = NULL;
 
   if (!importer_callback->IsUndefined()) {
+    ctx_w->importer_callback = new NanCallback(importer_callback);
     uv_async_init(uv_default_loop(), &ctx_w->async, (uv_async_cb)dispatched_async_uv_callback);
     sass_option_set_importer(sass_options, sass_make_importer(sass_importer, ctx_w));
   }
@@ -198,6 +236,10 @@ void make_callback(uv_work_t* req) {
     node::FatalException(try_catch);
   }
 
+  if (ctx_w->importer_callback) {
+    uv_close((uv_handle_t*)&ctx_w->async, NULL);
+  }
+
   sass_free_context_wrapper(ctx_w);
 }
 
@@ -228,6 +270,7 @@ NAN_METHOD(RenderSync) {
   sass_context_wrapper* ctx_w = sass_make_context_wrapper();
 
   ExtractOptions(options, dctx, ctx_w, false, true);
+
   compile_data(dctx);
 
   int result = GetResult(ctx_w, ctx);
@@ -238,7 +281,6 @@ NAN_METHOD(RenderSync) {
   }
 
   sass_free_context_wrapper(ctx_w);
-  free(source_string);
 
   if (result != 0) {
     NanThrowError(error);
@@ -260,7 +302,6 @@ NAN_METHOD(RenderFile) {
   int status = uv_queue_work(uv_default_loop(), &ctx_w->request, compile_it, (uv_after_work_cb)make_callback);
 
   assert(status == 0);
-  free(input_path);
 
   NanReturnUndefined();
 }
@@ -285,7 +326,6 @@ NAN_METHOD(RenderFileSync) {
   }
 
   sass_free_context_wrapper(ctx_w);
-  free(input_path);
 
   if (result != 0) {
     NanThrowError(error);
@@ -309,49 +349,11 @@ NAN_METHOD(ImportedCallback) {
 
   sass_context_wrapper* ctx_w = imports_collection[index];
 
-  if (returned_value->IsArray()) {
-    Handle<Array> array = Handle<Array>::Cast(returned_value);
-
-    ctx_w->imports = sass_make_import_list(array->Length());
-
-    for (size_t i = 0; i < array->Length(); ++i) {
-      Local<Value> value = array->Get(i);
-
-      if (!value->IsObject())
-        continue;
-
-      Local<Object> object = Local<Object>::Cast(value);
-      char* path = CreateString(object->Get(String::New("file")));
-      char* contents = CreateString(object->Get(String::New("contents")));
-
-      ctx_w->imports[i] = sass_make_import_entry(path, (!contents || contents[0] == '\0') ? 0 : strdup(contents), 0);
-    }
-  }
-  else if (returned_value->IsObject()) {
-    ctx_w->imports = sass_make_import_list(1);
-    Local<Object> object = Local<Object>::Cast(returned_value);
-    char* path = CreateString(object->Get(String::New("file")));
-    char* contents = CreateString(object->Get(String::New("contents")));
-
-    ctx_w->imports[0] = sass_make_import_entry(path, (!contents || contents[0] == '\0') ? 0 : strdup(contents), 0);
-  }
-  else {
-    ctx_w->imports = sass_make_import_list(1);
-    ctx_w->imports[0] = sass_make_import_entry(ctx_w->file, 0, 0);
-  }
-
+  prepare_import_results(returned_value, ctx_w);
   uv_cond_signal(&ctx_w->importer_condition_variable);
 
   if (try_catch.HasCaught()) {
     node::FatalException(try_catch);
-  }
-
-  if (!ctx_w->success_callback) {
-    /*
-     *  that is sync: RenderSync() or RenderFileSync,
-     *  we ran it explictly, so we stop it similarly.
-     */
-    uv_stop(ctx_w->async.loop);
   }
 
   NanReturnValue(NanNew<Number>(0));
