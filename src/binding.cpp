@@ -16,6 +16,8 @@ char* CreateString(Local<Value> value) {
 std::vector<sass_context_wrapper*> imports_collection;
 
 void prepare_import_results(Local<Value> returned_value, sass_context_wrapper* ctx_w) {
+  NanScope();
+
   if (returned_value->IsArray()) {
     Handle<Array> array = Handle<Array>::Cast(returned_value);
 
@@ -86,6 +88,8 @@ struct Sass_Import** sass_importer(const char* file, const char* prev, void* coo
     uv_cond_wait(&ctx_w->importer_condition_variable, &ctx_w->importer_mutex);
   }
   else {
+    NanScope();
+
     Handle<Value> argv[] = {
       NanNew<String>(strdup(ctx_w->file ? ctx_w->file : 0)),
       NanNew<String>(strdup(ctx_w->prev ? ctx_w->prev : 0)),
@@ -101,6 +105,8 @@ struct Sass_Import** sass_importer(const char* file, const char* prev, void* coo
 }
 
 void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx_w, bool isFile, bool isSync) {
+  NanScope();
+
   struct Sass_Context* ctx;
 
   NanAssignPersistent(ctx_w->result, options->Get(NanNew("result"))->ToObject());
@@ -152,6 +158,8 @@ void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx
 }
 
 void GetStats(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
+  NanScope();
+
   char** included_files = sass_context_get_included_files(ctx);
   Handle<Array> arr = NanNew<Array>();
 
@@ -161,13 +169,12 @@ void GetStats(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
     }
   }
 
-  Local<Object> obj = NanNew(ctx_w->result);
-  obj->Get(NanNew("stats"))->ToObject()->Set(NanNew("includedFiles"), arr);
-
-  NanAssignPersistent(ctx_w->result, obj);
+  NanNew(ctx_w->result)->Get(NanNew("stats"))->ToObject()->Set(NanNew("includedFiles"), arr);
 }
 
 void GetSourceMap(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
+  NanScope();
+
   Handle<Value> source_map;
 
   if (sass_context_get_error_status(ctx)) {
@@ -181,26 +188,27 @@ void GetSourceMap(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
     source_map = NanNew<String>("{}");
   }
 
-  Local<Object> obj = NanNew(ctx_w->result);
-  obj->Set(NanNew("sourceMap"), source_map);
-
-  NanAssignPersistent(ctx_w->result, obj);
+  NanNew(ctx_w->result)->Set(NanNew("sourceMap"), source_map);
 }
 
 int GetResult(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
+  NanScope();
+
   int status = sass_context_get_error_status(ctx);
 
   if (status == 0) {
-    Local<Object> obj = NanNew(ctx_w->result);
-    obj->Set(NanNew("css"), NanNew<String>(sass_context_get_output_string(ctx)));
-
-    NanAssignPersistent(ctx_w->result, obj);
+    NanNew(ctx_w->result)->Set(NanNew("css"), NanNew<String>(sass_context_get_output_string(ctx)));
 
     GetStats(ctx_w, ctx);
     GetSourceMap(ctx_w, ctx);
   }
 
   return status;
+}
+
+uv_close_cb close_cb(sass_context_wrapper* ctx_w) {
+  sass_free_context_wrapper(ctx_w);
+  return 0;
 }
 
 void make_callback(uv_work_t* req) {
@@ -237,10 +245,11 @@ void make_callback(uv_work_t* req) {
   }
 
   if (ctx_w->importer_callback) {
-    uv_close((uv_handle_t*)&ctx_w->async, NULL);
+    uv_close((uv_handle_t*)&ctx_w->async, close_cb(ctx_w));
   }
-
-  sass_free_context_wrapper(ctx_w);
+  else {
+    sass_free_context_wrapper(ctx_w);
+  }
 }
 
 NAN_METHOD(Render) {
