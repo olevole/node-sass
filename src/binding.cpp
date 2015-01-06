@@ -1,6 +1,5 @@
-#include <nan.h>
 #include <vector>
-#include "sass_context_wrapper.h"
+#include "sass_async_worker.h"
 
 char* CreateString(Local<Value> value) {
   if (value->IsNull() || !value->IsString()) {
@@ -50,27 +49,6 @@ void prepare_import_results(Local<Value> returned_value, sass_context_wrapper* c
   }
 }
 
-void dispatched_async_uv_callback(uv_async_t *req) {
-  NanScope();
-  sass_context_wrapper* ctx_w = static_cast<sass_context_wrapper*>(req->data);
-
-  TryCatch try_catch;
-
-  imports_collection.push_back(ctx_w);
-
-  Handle<Value> argv[] = {
-    NanNew<String>(strdup(ctx_w->file ? ctx_w->file : 0)),
-    NanNew<String>(strdup(ctx_w->prev ? ctx_w->prev : 0)),
-    NanNew<Number>(imports_collection.size() - 1)
-  };
-
-  NanNew<Value>(ctx_w->importer_callback->Call(3, argv));
-
-  if (try_catch.HasCaught()) {
-    node::FatalException(try_catch);
-  }
-}
-
 struct Sass_Import** sass_importer(const char* file, const char* prev, void* cookie)
 {
   sass_context_wrapper* ctx_w = static_cast<sass_context_wrapper*>(cookie);
@@ -83,9 +61,9 @@ struct Sass_Import** sass_importer(const char* file, const char* prev, void* coo
 
     ctx_w->file = file ? strdup(file) : 0;
     ctx_w->prev = prev ? strdup(prev) : 0;
-    ctx_w->async.data = (void*)ctx_w;
 
-    uv_async_send(&ctx_w->async);
+    NanAsyncQueueWorker(new SassAsyncWorker(ctx_w->importer_callback, ctx_w, &imports_collection, ImportWorker));
+
     uv_cond_wait(&ctx_w->importer_condition_variable, &ctx_w->importer_mutex);
   }
   else {
@@ -93,11 +71,10 @@ struct Sass_Import** sass_importer(const char* file, const char* prev, void* coo
 
     Handle<Value> argv[] = {
       NanNew<String>(file),
-      NanNew<String>(prev),
-      NanNew<Number>(imports_collection.size() - 1)
+      NanNew<String>(prev)
     };
 
-    Local<Object> returned_value = Local<Object>::Cast(NanNew<Value>(ctx_w->importer_callback->Call(3, argv)));
+    Local<Object> returned_value = Local<Object>::Cast(NanNew<Value>(ctx_w->importer_callback->Call(2, argv)));
 
     prepare_import_results(returned_value->Get(NanNew("objectLiteral")), ctx_w);
   }
@@ -127,8 +104,6 @@ void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx
   ctx_w->is_sync = isSync;
 
   if (!isSync) {
-    ctx_w->request.data = ctx_w;
-
     // async (callback) style
     Local<Function> success_callback = Local<Function>::Cast(options->Get(NanNew("success")));
     Local<Function> error_callback = Local<Function>::Cast(options->Get(NanNew("error")));
@@ -141,11 +116,10 @@ void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx
 
   if (importer_callback->IsFunction()) {
     ctx_w->importer_callback = new NanCallback(importer_callback);
-    uv_async_init(uv_default_loop(), &ctx_w->async, (uv_async_cb)dispatched_async_uv_callback);
     sass_option_set_importer(sass_options, sass_make_importer(sass_importer, ctx_w));
   }
 
-  if(!isFile) {
+  if (!isFile) {
     sass_option_set_input_path(sass_options, CreateString(options->Get(NanNew("file"))));
   }
 
@@ -162,95 +136,6 @@ void ExtractOptions(Local<Object> options, void* cptr, sass_context_wrapper* ctx
   sass_option_set_precision(sass_options, options->Get(NanNew("precision"))->Int32Value());
 }
 
-void GetStats(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
-  NanScope();
-
-  char** included_files = sass_context_get_included_files(ctx);
-  Handle<Array> arr = NanNew<Array>();
-
-  if (included_files) {
-    for (int i = 0; included_files[i] != nullptr; ++i) {
-      arr->Set(i, NanNew<String>(included_files[i]));
-    }
-  }
-
-  NanNew(ctx_w->result)->Get(NanNew("stats"))->ToObject()->Set(NanNew("includedFiles"), arr);
-}
-
-void GetSourceMap(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
-  NanScope();
-
-  Handle<Value> source_map;
-
-  if (sass_context_get_error_status(ctx)) {
-    return;
-  }
-
-  if (sass_context_get_source_map_string(ctx)) {
-    source_map = NanNew<String>(sass_context_get_source_map_string(ctx));
-  }
-  else {
-    source_map = NanNew<String>("{}");
-  }
-
-  NanNew(ctx_w->result)->Set(NanNew("sourceMap"), source_map);
-}
-
-int GetResult(sass_context_wrapper* ctx_w, Sass_Context* ctx) {
-  NanScope();
-
-  int status = sass_context_get_error_status(ctx);
-
-  if (status == 0) {
-    NanNew(ctx_w->result)->Set(NanNew("css"), NanNew<String>(sass_context_get_output_string(ctx)));
-
-    GetStats(ctx_w, ctx);
-    GetSourceMap(ctx_w, ctx);
-  }
-
-  return status;
-}
-
-void make_callback(uv_work_t* req) {
-  NanScope();
-
-  TryCatch try_catch;
-  sass_context_wrapper* ctx_w = static_cast<sass_context_wrapper*>(req->data);
-  struct Sass_Context* ctx;
-
-  if (ctx_w->dctx) {
-    ctx = sass_data_context_get_context(ctx_w->dctx);
-  }
-  else {
-    ctx = sass_file_context_get_context(ctx_w->fctx);
-  }
-
-  int status = GetResult(ctx_w, ctx);
-
-  if (status == 0 && ctx_w->success_callback) {
-    // if no error, do callback(null, result)
-    ctx_w->success_callback->Call(0, 0);
-  }
-  else if(ctx_w->error_callback) {
-    // if error, do callback(error)
-    const char* err = sass_context_get_error_json(ctx);
-    Local<Value> argv[] = {
-      NanNew<String>(err),
-      NanNew<Integer>(status)
-    };
-    ctx_w->error_callback->Call(2, argv);
-  }
-  if (try_catch.HasCaught()) {
-    node::FatalException(try_catch);
-  }
-
-  if (ctx_w->importer_callback) {
-    uv_close((uv_handle_t*)&ctx_w->async, NULL);
-  }
-
-  sass_free_context_wrapper(ctx_w);
-}
-
 NAN_METHOD(Render) {
   NanScope();
 
@@ -260,10 +145,7 @@ NAN_METHOD(Render) {
   sass_context_wrapper* ctx_w = sass_make_context_wrapper();
 
   ExtractOptions(options, dctx, ctx_w, false, false);
-
-  int status = uv_queue_work(uv_default_loop(), &ctx_w->request, compile_it, (uv_after_work_cb)make_callback);
-
-  assert(status == 0);
+  NanAsyncQueueWorker(new SassAsyncWorker(ctx_w->success_callback, ctx_w, CompileWorker));
 
   NanReturnUndefined();
 }
@@ -306,10 +188,7 @@ NAN_METHOD(RenderFile) {
   sass_context_wrapper* ctx_w = sass_make_context_wrapper();
 
   ExtractOptions(options, fctx, ctx_w, true, false);
-
-  int status = uv_queue_work(uv_default_loop(), &ctx_w->request, compile_it, (uv_after_work_cb)make_callback);
-
-  assert(status == 0);
+  NanAsyncQueueWorker(new SassAsyncWorker(ctx_w->success_callback, ctx_w, CompileWorker));
 
   NanReturnUndefined();
 }

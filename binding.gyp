@@ -4,6 +4,7 @@
       'target_name': 'binding',
       'sources': [
         'src/binding.cpp',
+        'src/sass_async_worker.cpp',
         'src/sass_context_wrapper.cpp',
         'src/libsass/ast.cpp',
         'src/libsass/base64vlq.cpp',

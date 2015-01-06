@@ -1,4 +1,5 @@
 #include <nan.h>
+#include <vector>
 #include "libsass/sass_context.h"
 
 #ifdef __cplusplus
@@ -15,10 +16,8 @@ extern "C" {
     Sass_Data_Context* dctx;
     Sass_File_Context* fctx;
     Persistent<Object> result;
-    uv_work_t request;
     uv_mutex_t importer_mutex;
     uv_cond_t importer_condition_variable;
-    uv_async_t async;
     const char* file;
     const char* prev;
     void* cookie;
@@ -32,6 +31,9 @@ extern "C" {
   struct sass_context_wrapper*      sass_make_context_wrapper(void);
   void sass_wrapper_dispose(struct sass_context_wrapper*, char*);
   void sass_free_context_wrapper(struct sass_context_wrapper*);
+  int GetResult(sass_context_wrapper*, Sass_Context*);
+
+  enum WorkerType{ CompileWorker, FunctionWorker, ImportWorker };
 
 #ifdef __cplusplus
 }
