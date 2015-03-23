@@ -48,7 +48,7 @@ std::vector<Handle<Value>> CustomImporterBridge::pre_process_args(std::vector<vo
   std::vector<Handle<Value>> out;
 
   for (void* ptr : in) {
-    out.push_back(NanNew<String>((char const*) ptr));
+    out.push_back(NanNew<String>((char const*)ptr));
   }
 
   return out;

@@ -8,7 +8,7 @@
 #include "value.h"
 #include "factory.h"
 
-namespace SassTypes 
+namespace SassTypes
 {
   using namespace v8;
 
@@ -16,26 +16,26 @@ namespace SassTypes
   // objects and wrapping sass values inside them
   template <class T>
   class SassValueWrapper : public Value {
-    public:
-      static char const* get_constructor_name() { return "SassValue"; }
+  public:
+    static char const* get_constructor_name() { return "SassValue"; }
 
-      SassValueWrapper(Sass_Value*);
-      virtual ~SassValueWrapper();
+    SassValueWrapper(Sass_Value*);
+    virtual ~SassValueWrapper();
 
-      Sass_Value* get_sass_value();
-      Local<Object> get_js_object();
+    Sass_Value* get_sass_value();
+    Local<Object> get_js_object();
 
-      static Handle<Function> get_constructor();
-      static Local<FunctionTemplate> get_constructor_template();
-      static NAN_METHOD(New);
+    static Handle<Function> get_constructor();
+    static Local<FunctionTemplate> get_constructor_template();
+    static NAN_METHOD(New);
 
-    protected:
-      Sass_Value* value;
-      static T* unwrap(Local<Object>);
+  protected:
+    Sass_Value* value;
+    static T* unwrap(Local<Object>);
 
-    private:
-      static Persistent<Function> constructor;
-      Persistent<Object> js_object;
+  private:
+    static Persistent<Function> constructor;
+    Persistent<Object> js_object;
   };
 
   template <class T>
@@ -43,7 +43,7 @@ namespace SassTypes
 
   template <class T>
   SassValueWrapper<T>::SassValueWrapper(Sass_Value* v) {
-    this->value = sass_clone_value(v); 
+    this->value = sass_clone_value(v);
   }
 
   template <class T>
@@ -53,8 +53,8 @@ namespace SassTypes
   }
 
   template <class T>
-  Sass_Value* SassValueWrapper<T>::get_sass_value() { 
-    return sass_clone_value(this->value); 
+  Sass_Value* SassValueWrapper<T>::get_sass_value() {
+    return sass_clone_value(this->value);
   }
 
   template <class T>
@@ -117,7 +117,8 @@ namespace SassTypes
 
       NanSetInternalFieldPointer(args.This(), 0, obj);
       NanAssignPersistent(obj->js_object, args.This());
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       return NanThrowError(NanNew(e.what()));
     }
   }
@@ -127,6 +128,5 @@ namespace SassTypes
     return static_cast<T*>(Factory::unwrap(obj));
   }
 }
-
 
 #endif

@@ -12,10 +12,10 @@ namespace SassTypes
   // This is the guru that knows everything about instantiating the right subclass of SassTypes::Value
   // to wrap a given Sass_Value object.
   class Factory {
-    public:
-      static void initExports(Handle<Object>);
-      static Value* create(Sass_Value*);
-      static Value* unwrap(Handle<v8::Value>);
+  public:
+    static void initExports(Handle<Object>);
+    static Value* create(Sass_Value*);
+    static Value* unwrap(Handle<v8::Value>);
   };
 }
 

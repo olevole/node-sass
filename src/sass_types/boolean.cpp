@@ -3,11 +3,9 @@
 #include "boolean.h"
 #include "sass_value_wrapper.h"
 
-
 using namespace v8;
 
-
-namespace SassTypes 
+namespace SassTypes
 {
   Persistent<Function> Boolean::constructor;
   bool Boolean::constructor_locked = false;
@@ -53,7 +51,7 @@ namespace SassTypes
 
   NAN_METHOD(Boolean::New) {
     NanScope();
-    
+
     if (args.IsConstructCall()) {
       if (constructor_locked) {
         return NanThrowError(NanNew("Cannot instantiate SassBoolean"));
@@ -65,6 +63,8 @@ namespace SassTypes
 
       NanReturnValue(NanNew(get_singleton(args[0]->ToBoolean()->Value()).get_js_object()));
     }
+
+    NanReturnUndefined();
   }
 
   NAN_METHOD(Boolean::GetValue) {

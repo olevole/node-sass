@@ -39,12 +39,14 @@ extern "C" {
 
     NanDisposePersistent(ctx_w->result);
 
-    if(string) {
+    if (string) {
       free(string);
     }
 
-    for (CustomFunctionBridge* bridge : ctx_w->function_bridges) {
-      delete bridge;
+    if (!ctx_w->function_bridges.empty()){
+      for (CustomFunctionBridge* bridge : ctx_w->function_bridges) {
+        delete bridge;
+      }
     }
 
     if (ctx_w->importer_bridge) {

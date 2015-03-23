@@ -4,18 +4,16 @@
 #include <nan.h>
 #include <sass_values.h>
 
-
-namespace SassTypes 
+namespace SassTypes
 {
   using namespace v8;
-  
+
   // This is the interface that all sass values must comply with
   class Value {
-    public:
-      virtual Sass_Value* get_sass_value() =0;
-      virtual Local<Object> get_js_object() =0;
+  public:
+    virtual Sass_Value* get_sass_value() = 0;
+    virtual Local<Object> get_js_object() = 0;
   };
 }
-
 
 #endif

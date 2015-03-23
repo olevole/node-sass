@@ -5,11 +5,10 @@
 #include <sass_values.h>
 #include "sass_value_wrapper.h"
 
-
-namespace SassTypes 
+namespace SassTypes
 {
   using namespace v8;
-  
+
   class List : public SassValueWrapper<List> {
     public:
       List(Sass_Value*);
