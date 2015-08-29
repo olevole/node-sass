@@ -23,6 +23,11 @@ install:
   - npm --version
   - git submodule update --init --recursive
   - npm install --msvs_version=2013
+  - ps: Get-ChildItem .\vendor\**\*.node | % `
+      {
+        Push-AppveyorArtifact $_.FullName -FileName
+        (($_.FullName.Split('\\') | Select-Object -Last 2) -join '_')
+      }
 
 test_script: npm test
 
