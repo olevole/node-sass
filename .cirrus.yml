@@ -1,0 +1,41 @@
+freebsd_build_task:
+  image: freebsd-11-2-release-amd64
+
+  env:
+    matrix:
+      node_js: "11"
+      node_js: "10"
+      node_js: "9"
+      node_js: "7"
+      node_js: "6"
+      node_js: "5"
+      node_js: "4"
+      node_js: "3"
+      node_js: "2"
+      node_js: "1"
+      node_js: "0.12"
+      node_js: "0.10"
+
+  prepare_script:
+    - nvm --version
+    - node --version
+    - npm --version
+    - clang --version
+    - clang --version
+
+  build_script:
+    - npm install
+
+publish_task:
+  only_if: !!$CIRRUS_TAG
+
+  script:
+    - for file in `ls vendor/**/*.node`; do
+        parent=${file%/*}
+        name=${parent##*/}
+        fullyQualifiedName="$pwd/$parent/${name}_binding.node"
+        mv "$file" "$parent/${name}_binding.node"
+        echo "New filename: '$fullyQualifiedName'"
+        # TODO: figure out token encryption once it lights up on UI: https://cirrus-ci.com/github/am11/node-sass
+        # ./scripts/upload-github-release-asset.sh github_api_token=TOKEN owner=sass repo=node-sass tag=$CIRRUS_TAG filename=$fullyQualifiedName
+      done
