@@ -1,0 +1,104 @@
+freebsd_instance:
+  image: freebsd-11-2-release-amd64
+
+freebsd_build_task:
+
+  env:
+    matrix:
+      - node_js: "11"
+        nodeArchive: "node-11.3.0_1"
+        npmArchive: "npm-6.4.1_1"
+      # - node_js: "10"
+      #   nodeArchive: "node10-10.14.1_1"
+      #   npmArchive: "npm-node10-6.4.1_1"
+      # # - node_js: "9"
+      # - node_js: "8"
+      #   nodeArchive: "node8-8.14.0_1"
+      #   npmArchive: "npm-node8-6.4.1_1"
+      # # - node_js: "7"
+      # - node_js: "6"
+      #   nodeArchive: "node6-6.15.1_1"
+      #   npmArchive: "npm-node6-6.4.1_1"
+      # - node_js: "5"
+      # - node_js: "4"
+      # - node_js: "3"
+      # - node_js: "2"
+      # - node_js: "1"
+      # - node_js: "0.12"
+      # - node_js: "0.10"
+
+  env:
+    matrix:
+      - abi: freebsd:11:x86:64
+      - abi: freebsd:11:x86:32
+        jailname: jail32dev
+
+  # env:
+  #   matrix:
+  #     - CC: /usr/bin/cc -m64
+  #       CXX: /usr/bin/c++ -m64
+  #     - CC: /usr/bin/cc -m32
+  #       CXX: /usr/bin/c++ -m32
+
+  # nvm_cache:
+  #   folder: "$HOME/.nvm"
+  #   populate_script:
+  #     - pkg install -y bash gmake > /dev/null
+  #     - bash
+  #     - curl -O https://raw.githubusercontent.com/creationix/nvm/v0.33.2/install.sh
+  #     - chmod 0755 install.sh
+  #     - ./install.sh
+  #     - export NVM_DIR="$HOME/.nvm"
+  #     - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" > /dev/null'  # This loads nvm
+  #     - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'  # This loads nvm bash_completion
+  #     - for version in 0.10 0.12 1 2 3 4 5 6 7 8 9 10 11; do
+  #         nvm install $version > /dev/null;
+  #       done
+
+  prepare_script:
+    # - export NVM_DIR="$HOME/.nvm"
+    # - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" > /dev/null'  # This loads nvm
+    # - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'  # This loads nvm bash_completion
+    # - nvm --version
+    # - nvm use $node_js
+    - if test "$abi" = "freebsd:11:x86:32"; then
+        sh -c 'BSDINSTALL_DISTSITE=ftp://ftp.freebsd.org/pub/FreeBSD/releases/i386/11.1-RELEASE bsdinstall jail /jail32dev'
+        echo "$CIRRUS_WORKING_DIR nullfs rw 1 1" >> /etc/fstab.$jailname;
+        service jail start jail32dev
+        jexec jail32dev /bin/tcsh;
+        ls;
+        echo "<<<<< LS >>>>>";
+        ls /tmp;
+        jailmask=-j $jailname;
+      fi
+    - sed -i "" "s/quarterly/latest/g" /etc/pkg/FreeBSD.conf # use latest ports
+    # - sed -i "" "s/\${ABI}/$abi/g" /etc/pkg/FreeBSD.conf
+    - pkg $jailmask install -y c-ares gmake icu libnghttp2 libuv git > /dev/null
+    - cat /etc/pkg/FreeBSD.conf
+    #xtoolchain-llvm
+    - pkg add http://pkg.freebsd.org/$abi/latest/All/$nodeArchive.txz
+    - pkg add http://pkg.freebsd.org/$abi/latest/All/$npmArchive.txz
+    - node --version
+    - npm --version
+    - clang++ --version
+
+  build_script:
+    - ls
+    - npm install --unsafe-perm
+
+publish_task:
+  only_if: '!!$CIRRUS_TAG'
+
+  env:
+    AUTH_TOKEN: ENCRYPTED[a5dff23246b1739033647812162c802c324eedf8976f2c5fa0af549de6b3a243141a94460652f542cbe24465ee628f9c]
+
+  script:
+    - curl -s -d '{"tag_name":"$CIRRUS_TAG"}' -H "Authorization: token $AUTH_TOKEN" https://api.github.com/repos/am11/node-sass/releases >
+    - for file in `ls vendor/**/*.node`; do
+        parent=${file%/*};
+        name=${parent##*/};
+        fullyQualifiedName="$pwd/$parent/${name}_binding.node";
+        mv "$file" "$parent/${name}_binding.node";
+        echo -e 'New filename\072 $fullyQualifiedName';
+        ./scripts/upload-github-release-asset.sh github_api_token=$AUTH_TOKEN owner=am11 repo=node-sass tag=$CIRRUS_TAG filename=$fullyQualifiedName;
+      done
