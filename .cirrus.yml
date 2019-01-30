@@ -6,156 +6,45 @@ freebsd_build_task:
   env:
     matrix:
       - node_js: "11"
-        nodeArchive: "node-11.3.0_1"
+        nodeArchive: "node-11.7.0_1"
         npmArchive: "npm-6.4.1_1"
       - node_js: "10"
-        nodeArchive: "node10-10.14.1_1"
+        nodeArchive: "node10-10.15.0_1"
         npmArchive: "npm-node10-6.4.1_1"
-      # - node_js: "9"
       - node_js: "8"
-        nodeArchive: "node8-8.14.0_1"
+        nodeArchive: "node8-8.15.0"
         npmArchive: "npm-node8-6.4.1_1"
-      # - node_js: "7"
       - node_js: "6"
-        nodeArchive: "node6-6.15.1_1"
+        nodeArchive: "node6-6.16.0_1"
         npmArchive: "npm-node6-6.4.1_1"
-      # - node_js: "5"
-      # - node_js: "4"
-      # - node_js: "3"
-      # - node_js: "2"
-      # - node_js: "1"
-      # - node_js: "0.12"
-      # - node_js: "0.10"
 
   env:
     matrix:
-      #- abi: freebsd:11:x86:64
+      - abi: freebsd:11:x86:64
       - abi: freebsd:11:x86:32
+        execPrefix: cbsd jexec jname=jail-11i386
 
-# env:
-#   matrix:
-#     - CC: /usr/bin/cc -m64
-#       CXX: /usr/bin/c++ -m64
-#     - CC: /usr/bin/cc -m32
-#       CXX: /usr/bin/c++ -m32
-
-# nvm_cache:
-#   folder: "$HOME/.nvm"
-#   populate_script:
-#     - pkg install -y bash gmake > /dev/null
-#     - bash
-#     - curl -O https://raw.githubusercontent.com/creationix/nvm/v0.33.2/install.sh
-#     - chmod 0755 install.sh
-#     - ./install.sh
-#     - export NVM_DIR="$HOME/.nvm"
-#     - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" > /dev/null'  # This loads nvm
-#     - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'  # This loads nvm bash_completion
-#     - for version in 0.10 0.12 1 2 3 4 5 6 7 8 9 10 11; do
-#         nvm install $version > /dev/null;
-#       done
-
-# poudriere jail -c -j 11i386 -v 11.2-RELEASE -a i386
-# poudriere ports -c -p local
-# poudriere ports -c -p local
-# http://ftp.freebsd.org/pub/FreeBSD/releases/i386/11.2-RELEASE/MANIFEST
   prepare_script:
-    # - export NVM_DIR="$HOME/.nvm"
-    # - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" > /dev/null'  # This loads nvm
-    # - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'  # This loads nvm bash_completion
-    # - nvm --version
-    # - nvm use $node_js
-    - if test "$abi" = "freebsd:11:x86:32"; then
-        pkg install -y libssh2 rsync sqlite3 git pkgconf;
-        git clone https://github.com/cbsd/cbsd.git /usr/local/cbsd --single-branch --branch develop --depth 1;
-        cd /usr/local/etc/rc.d;
-        ln -sf /usr/local/cbsd/rc.d/cbsdd;
-        mkdir -p /usr/local/libexec/bsdconfig;
-        cd /usr/local/libexec/bsdconfig;
-        ln -s /usr/local/cbsd/share/bsdconfig/cbsd;
-        pw useradd cbsd -s /bin/sh -d /nonexistent -c "cbsd user";
-        cd /tmp;
-        ln -s /usr/local/cbsd/etc;
-        cat \> /tmp/etc/FreeBSD-bases.conf << EOF
-        auto_baseupdate=0
-        default_obtain_base_method="extract repo"
-        default_obtain_base_extract_source="/usr/freebsd-dist/base.txz"
-        default_obtain_base_repo_sources="https://bintray.com/am11/freebsd-dist/download_file?file_path=base-11.2-i386.txz"
-        EOF;
-        workdir=/tmp /usr/local/cbsd/sudoexec/initenv /usr/local/cbsd/share/initenv.conf;
-        cat \> /tmp/jail-11i386.jconf << EOF
-        jname="jail-11i386"
-        path="/usr/jails/jail-11i386"
-        host_hostname="jail-11i386.my.domain"
-        ip4_addr="192.168.1.4/16"
-        mount_devfs="1"
-        allow_mount="1"
-        allow_devfs="1";
-        allow_nullfs="1"
-        allow_raw_sockets="1"
-        mount_fstab="/usr/jails/jails-fstab/fstab.jail-11i386"
-        arch="i386"
-        mkhostsfile="1"
-        devfs_ruleset="4"
-        ver="11.2"
-        basename=""
-        baserw="0"
-        mount_src="0"
-        mount_obj="0"
-        mount_kernel="0"
-        mount_ports="1"
-        astart="1"
-        data="/usr/jails/jails-data/jail-11i386-data"
-        vnet="0"
-        applytpl="1"
-        mdsize="0"
-        rcconf="/usr/jails/jails-rcconf/rc.conf_jail-11i386"
-        floatresolv="1"
-        exec_poststart="0"
-        exec_poststop=""
-        exec_prestart="0"
-        exec_prestop="0"
-        exec_master_poststart="0"
-        exec_master_poststop="0"
-        exec_master_prestart="0"
-        exec_master_prestop="0"
-        pkg_bootstrap="1"
-        interface="auto"
-        jailskeldir="$CIRRUS_WORKING_DIR"
-        exec_start="/bin/sh /etc/rc"
-        exec_stop="/bin/sh /etc/rc.shutdown"
-        EOF;
-        cbsd jcreate jconf=/tmp/jail-11i386.jconf inter=0 arch=i386;
-        cbsd bases display=ver,source;
-        cbsd jstart jail-11i386;
-        cbsd jexec jname=jail-11i386 /bin/tcsh;
-        pkg update -f;
+    - |
+      if test "$abi" = "freebsd:11:x86:32"; then
+        ./scripts/configure_freebsd_ci_jail.sh $CIRRUS_WORKING_DIR;
+        $execPrefix uname -a;
+        $execPrefix ping bing.com;
+        $execPrefix pkg update -f;
       fi
-    # - if test "$abi" = "freebsd:11:x86:32"; then
-    #     sh -c 'BSDINSTALL_DISTSITE=ftp://ftp.freebsd.org/pub/FreeBSD/releases/i386/11.1-RELEASE bsdinstall jail /jail32dev'
-    #     echo "$CIRRUS_WORKING_DIR nullfs rw 1 1" >> /etc/fstab.$jailname;
-    #     service jail start jail32dev
-    #     jexec jail32dev /bin/tcsh;
-    #     ls;
-    #     echo "<<<<< LS >>>>>";
-    #     ls /tmp;
-    #     jailmask=-j $jailname;
-    #   fi
-
-    # The following works for amd64, but not yet i386
-    - sed -i "" "s/quarterly/latest/g" /etc/pkg/FreeBSD.conf # use latest ports
-    # - sed -i "" "s/\${ABI}/$abi/g" /etc/pkg/FreeBSD.conf
-    - pkg $jailmask install -y c-ares gmake icu libnghttp2 libuv git > /dev/null
-    - cat /etc/pkg/FreeBSD.conf
-    #xtoolchain-llvm
-    - pkg add http://pkg.freebsd.org/$abi/latest/All/$nodeArchive.txz
-    - pkg add http://pkg.freebsd.org/$abi/latest/All/$npmArchive.txz
-    - node --version
-    - npm --version
-    - clang++ --version
+    - $execPrefix cat /etc/pkg/FreeBSD.conf
+    - $execPrefix sed -i '' 's/quarterly/latest/g' /etc/pkg/FreeBSD.conf &> /dev/null # use latest ports
+    - $execPrefix cat /etc/pkg/FreeBSD.conf
+    - $execPrefix pkg install -y c-ares gmake icu libnghttp2 libuv git > /dev/null
+    - $execPrefix pkg add http://pkg.freebsd.org/$abi/latest/All/$nodeArchive.txz
+    - $execPrefix pkg add http://pkg.freebsd.org/$abi/latest/All/$npmArchive.txz
+    - $execPrefix node --version
+    - $execPrefix npm --version
+    - $execPrefix clang++ --version
 
   build_script:
-    - ls
-    - npm install --unsafe-perm
+    - $execPrefix ls
+    - $execPrefix npm install --unsafe-perm # kicks in the build step and invokes clang via gyp machinery
 
 publish_task:
   only_if: '!!$CIRRUS_TAG'
