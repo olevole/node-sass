@@ -33,7 +33,7 @@ cat > /tmp/jail-11i386.jconf << EOF
 jname="jail-11i386"
 path="/usr/jails/jail-11i386"
 host_hostname="jail-11i386.my.domain"
-ip4_addr="10.128.0.50"
+ip4_addr="DHCP"
 mount_devfs="1"
 allow_mount="1"
 allow_devfs="1"
