@@ -1,12 +1,16 @@
 #!/usr/bin/env sh
 
+set -o xtrace
+
 skelDirectory=$1
 
 echo "Installing build dependencies for cbsd"
 pkg install -y libssh2 rsync sqlite3 git pkgconf
 
 echo "Clone and setup cbsd"
-git clone https://github.com/am11/cbsd.git /usr/local/cbsd --single-branch --branch develop --depth 1
+#git clone https://github.com/am11/cbsd.git /usr/local/cbsd --single-branch --branch develop --depth 1
+git clone https://github.com/cbsd/cbsd.git /usr/local/cbsd --single-branch --branch develop --depth 1
+
 cd /usr/local/etc/rc.d
 ln -sf /usr/local/cbsd/rc.d/cbsdd
 mkdir -p /usr/local/libexec/bsdconfig
@@ -73,7 +77,17 @@ exec_stop="/bin/sh /etc/rc.shutdown"
 EOF
 
 echo "Initializing cbsd environment"
-workdir=/tmp /usr/local/cbsd/sudoexec/initenv /usr/local/cbsd/share/initenv.conf
+
+# redefine nodeippool
+cp /usr/local/cbsd/share/initenv.conf /tmp/initenv.conf
+sysrc -qf /tmp/initenv.conf nodeippool=192.168.0.0/24
+# determine uplink iface
+auto_iface=$( /sbin/route -n get 0.0.0.0 |/usr/bin/awk '/interface/{print $2}' )
+workdir=/tmp /usr/local/cbsd/sudoexec/initenv /tmp/initenv.conf
+cbsd natcfg fw_new=fw natip_new=${auto_iface}
+kldload pf || true
+cbsd naton
+sysctl -w net.inet.ip.forwarding=1
 
 echo "Creating jail-11i386"
 cbsd jcreate jconf=/tmp/jail-11i386.jconf inter=0 arch=i386
@@ -83,3 +97,17 @@ cbsd jcreate jconf=/tmp/jail-11i386.jconf inter=0 arch=i386
 
 echo "Starting jail-11i386"
 cbsd jstart jail-11i386
+
+# debug
+uname -a
+cbsd jls
+jls -v
+cat /etc/resolv.conf
+grep nodeip ~cbsd/nc.inventory
+cbsd jexec jname=jail-11i386 cat /etc/resolv.conf
+cbsd jailscp /etc/resolv.conf jail-11i386:/etc/resolv.conf
+cbsd jexec jname=jail-11i386 ifconfig
+ping -c1 8.8.8.8 ||true
+#nslookup google.com 8.8.8.8 ||true
+#dig @8.8.8.8 google.com ||true
+nc -z google.com 80 ||true

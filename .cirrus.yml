@@ -6,10 +6,10 @@ freebsd_build_task:
   env:
     matrix:
       - node_js: "11"
-        nodeArchive: "node-11.7.0_1"
+        nodeArchive: "node-11.8.0"
         npmArchive: "npm-6.4.1_1"
       - node_js: "10"
-        nodeArchive: "node10-10.15.0_1"
+        nodeArchive: "node10-10.15.1"
         npmArchive: "npm-node10-6.4.1_1"
       - node_js: "8"
         nodeArchive: "node8-8.15.0"
@@ -28,13 +28,11 @@ freebsd_build_task:
     - |
       if test "$abi" = "freebsd:11:x86:32"; then
         ./scripts/configure_freebsd_ci_jail.sh $CIRRUS_WORKING_DIR;
-        $execPrefix uname -a;
-        $execPrefix ping bing.com;
+        $execPrefix sed -i -- '' 's/quarterly/latest/g' /etc/pkg/FreeBSD.conf; # use latest ports
         $execPrefix pkg update -f;
+      else
+        sed -i '' 's/quarterly/latest/g' /etc/pkg/FreeBSD.conf; # use latest ports
       fi
-    - $execPrefix cat /etc/pkg/FreeBSD.conf
-    - $execPrefix sed -i '' 's/quarterly/latest/g' /etc/pkg/FreeBSD.conf &> /dev/null # use latest ports
-    - $execPrefix cat /etc/pkg/FreeBSD.conf
     - $execPrefix pkg install -y c-ares gmake icu libnghttp2 libuv git > /dev/null
     - $execPrefix pkg add http://pkg.freebsd.org/$abi/latest/All/$nodeArchive.txz
     - $execPrefix pkg add http://pkg.freebsd.org/$abi/latest/All/$npmArchive.txz
@@ -43,7 +41,7 @@ freebsd_build_task:
     - $execPrefix clang++ --version
 
   build_script:
-    - $execPrefix ls
+    - $execPrefix ls  # debug
     - $execPrefix npm install --unsafe-perm # kicks in the build step and invokes clang via gyp machinery
 
 publish_task:
