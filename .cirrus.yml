@@ -22,12 +22,13 @@ freebsd_build_task:
     matrix:
       - abi: freebsd:11:x86:64
       - abi: freebsd:11:x86:32
-        execPrefix: cbsd jexec jname=jail-11i386
+        jailName: j11i386
+        execPrefix: cbsd jexec jname=j11i386
 
   prepare_script:
     - |
       if test "$abi" = "freebsd:11:x86:32"; then
-        ./scripts/configure_freebsd_ci_jail.sh $CIRRUS_WORKING_DIR;
+        ./scripts/configure_freebsd_ci_jail.sh $jailName $CIRRUS_WORKING_DIR;
         $execPrefix sed -i -- '' 's/quarterly/latest/g' /etc/pkg/FreeBSD.conf; # use latest ports
         $execPrefix pkg update -f;
       else

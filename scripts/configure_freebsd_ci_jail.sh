@@ -2,13 +2,13 @@
 
 set -o xtrace
 
-skelDirectory=$1
+jailName=$1
+skelDirectory=$2
 
 echo "Installing build dependencies for cbsd"
 pkg install -y libssh2 rsync sqlite3 git pkgconf
 
 echo "Clone and setup cbsd"
-#git clone https://github.com/am11/cbsd.git /usr/local/cbsd --single-branch --branch develop --depth 1
 git clone https://github.com/cbsd/cbsd.git /usr/local/cbsd --single-branch --branch develop --depth 1
 
 cd /usr/local/etc/rc.d
@@ -28,22 +28,30 @@ default_obtain_base_extract_source="/usr/freebsd-dist/base.txz"
 default_obtain_base_repo_sources="https://bintray.com/am11/freebsd-dist/download_file?file_path=base-11.2-i386.txz"
 EOF
 
-cat /etc/rc.conf
+# determine uplink ip address
+# determine uplink iface
+auto_iface=$( /sbin/route -n get 0.0.0.0 |/usr/bin/awk '/interface/{print $2}' )
+my_ipv4=$( /sbin/ifconfig ${auto_iface} | /usr/bin/awk '/inet [0-9]+/{print $2}' )
 
-ifconfig
+if [ -z "${my_ipv4}" ]; then
+	echo "IPv4 not detected"
+	exit 1
+fi
 
-echo "Writing 'jail-11i386' configuration file"
-cat > /tmp/jail-11i386.jconf << EOF
-jname="jail-11i386"
-path="/usr/jails/jail-11i386"
-host_hostname="jail-11i386.my.domain"
-ip4_addr="DHCP"
+cbsd_workdir=/usr/jails
+
+echo "Writing '${jailName}' configuration file"
+cat > /tmp/${jailName}.jconf << EOF
+jname="${jailName}"
+path="${cbsd_workdir}/${jailName}"
+host_hostname="${jailName}.my.domain"
+ip4_addr="${my_ipv4}"
 mount_devfs="1"
 allow_mount="1"
 allow_devfs="1"
 allow_nullfs="1"
 allow_raw_sockets="1"
-mount_fstab="/usr/jails/jails-fstab/fstab.jail-11i386"
+mount_fstab="${cbsd_workdir}/jails-fstab/fstab.${jailName}"
 arch="i386"
 mkhostsfile="1"
 devfs_ruleset="4"
@@ -55,11 +63,11 @@ mount_obj="0"
 mount_kernel="0"
 mount_ports="1"
 astart="1"
-data="/usr/jails/jails-data/jail-11i386-data"
+data="${cbsd_workdir}/jails-data/${jailName}-data"
 vnet="0"
 applytpl="1"
 mdsize="0"
-rcconf="/usr/jails/jails-rcconf/rc.conf_jail-11i386"
+rcconf="${cbsd_workdir}/jails-rcconf/rc.conf_${jailName}"
 floatresolv="1"
 exec_poststart="0"
 exec_poststop=""
@@ -70,44 +78,19 @@ exec_master_poststop="0"
 exec_master_prestart="0"
 exec_master_prestop="0"
 pkg_bootstrap="1"
-interface="auto"
+interface="0"
 jailskeldir="$skelDirectory"
 exec_start="/bin/sh /etc/rc"
 exec_stop="/bin/sh /etc/rc.shutdown"
+runasap="1"	# run upon jail create
 EOF
 
 echo "Initializing cbsd environment"
+env workdir=${cbsd_workdir} /usr/local/cbsd/sudoexec/initenv /usr/local/cbsd/share/initenv.conf
 
-# redefine nodeippool
-cp /usr/local/cbsd/share/initenv.conf /tmp/initenv.conf
-sysrc -qf /tmp/initenv.conf nodeippool=192.168.0.0/24
-# determine uplink iface
-auto_iface=$( /sbin/route -n get 0.0.0.0 |/usr/bin/awk '/interface/{print $2}' )
-workdir=/tmp /usr/local/cbsd/sudoexec/initenv /tmp/initenv.conf
-cbsd natcfg fw_new=fw natip_new=${auto_iface}
-kldload pf || true
-cbsd naton
-sysctl -w net.inet.ip.forwarding=1
+echo "Creating ${jailName}"
+cbsd jcreate jconf=/tmp/${jailName}.jconf inter=0 arch=i386
+cbsd jailscp /etc/resolv.conf ${jailName}:/etc/resolv.conf
 
-echo "Creating jail-11i386"
-cbsd jcreate jconf=/tmp/jail-11i386.jconf inter=0 arch=i386
-
-# display the installed images
-# cbsd bases display=ver,source
-
-echo "Starting jail-11i386"
-cbsd jstart jail-11i386
-
-# debug
-uname -a
-cbsd jls
-jls -v
-cat /etc/resolv.conf
-grep nodeip ~cbsd/nc.inventory
-cbsd jexec jname=jail-11i386 cat /etc/resolv.conf
-cbsd jailscp /etc/resolv.conf jail-11i386:/etc/resolv.conf
-cbsd jexec jname=jail-11i386 ifconfig
-ping -c1 8.8.8.8 ||true
-#nslookup google.com 8.8.8.8 ||true
-#dig @8.8.8.8 google.com ||true
-nc -z google.com 80 ||true
+echo "${jailName} created"
+cd /etc/skel
